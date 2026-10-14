@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os/signal"
@@ -19,18 +19,24 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	cfg := config.Load()
 
 	if err := storage.MigrateUp(cfg.DatabaseURL); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	pool, err := storage.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer pool.Close()
 
@@ -47,20 +53,26 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
+	serveErr := make(chan error, 1)
 	go func() {
 		log.Printf("listening on %s", cfg.HTTPAddr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal(err)
-		}
+		serveErr <- srv.ListenAndServe()
 	}()
 
-	<-ctx.Done()
+	select {
+	case err := <-serveErr:
+		return fmt.Errorf("http server: %w", err)
+	case <-ctx.Done():
+	}
+
 	log.Println("shutting down")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("shutdown: %v", err)
+		return fmt.Errorf("shutdown: %w", err)
 	}
+
+	return nil
 }

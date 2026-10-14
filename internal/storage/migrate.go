@@ -3,23 +3,39 @@ package storage
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"metrics-service/migrations"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	pgxmigrate "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 func MigrateUp(dsn string) error {
+	cfg, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return fmt.Errorf("parse database url: %w", err)
+	}
+
+	db := stdlib.OpenDB(*cfg)
+
+	driver, err := pgxmigrate.WithInstance(db, &pgxmigrate.Config{})
+	if err != nil {
+		_ = db.Close()
+		return fmt.Errorf("init migrate driver: %w", err)
+	}
+
 	src, err := iofs.New(migrations.FS, ".")
 	if err != nil {
+		_ = driver.Close()
 		return fmt.Errorf("open migrations: %w", err)
 	}
 
-	m, err := migrate.NewWithSourceInstance("iofs", src, pgx5URL(dsn))
+	m, err := migrate.NewWithInstance("iofs", src, "pgx5", driver)
 	if err != nil {
+		_ = driver.Close()
 		return fmt.Errorf("init migrate: %w", err)
 	}
 	defer func() { _, _ = m.Close() }()
@@ -29,13 +45,4 @@ func MigrateUp(dsn string) error {
 	}
 
 	return nil
-}
-
-func pgx5URL(dsn string) string {
-	for _, prefix := range []string{"postgres://", "postgresql://"} {
-		if rest, ok := strings.CutPrefix(dsn, prefix); ok {
-			return "pgx5://" + rest
-		}
-	}
-	return dsn
 }
