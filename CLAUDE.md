@@ -2,9 +2,13 @@
 
 Go-сервис для хранения метрик клиентских приложений в PostgreSQL.
 MVP: HTTP API на приём метрик — по одной (`POST /api/v1/metrics`) и батчем
-(`POST /api/v1/metrics/batch`, JSON-массив, до `service.MaxBatchSize` = 1000 штук), и healthcheck (`GET /healthz`).
+(`POST /api/v1/metrics/batch`, JSON-массив, до `service.MaxBatchSize` = 1000 штук), чтение дневных сумм
+(`GET /api/v1/metrics/daily?client_id=&app_id=&from=YYYY-MM-DD&to=YYYY-MM-DD`) и healthcheck (`GET /healthz`).
 Батч пишется одним запросом `INSERT ... SELECT FROM unnest(...) ON CONFLICT DO NOTHING`: дубликаты (в т.ч. внутри
 одного батча) молча пропускаются, ответ `200 {"inserted": N, "skipped": M}`. Ошибка валидации любого элемента — 400, не сохраняется ничего.
+Дневные суммы: `app_id` опционален (без него — сумма по всем приложениям клиента), `from`/`to` включительно,
+сутки по UTC, период до `service.MaxRangeDays` = 366. Репозиторий отдаёт только дни с данными (`to` у него
+исключающий), сервис дозаполняет пропущенные дни нулями.
 Чтения и агрегаций метрик пока нет.
 
 ## Стек

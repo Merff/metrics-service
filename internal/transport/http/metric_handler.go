@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"metrics-service/internal/models"
@@ -13,18 +14,22 @@ import (
 	"metrics-service/internal/service"
 )
 
-const maxBodyBytes = 1 << 20
+const (
+	maxBodyBytes = 1 << 20
+	dateLayout   = "2006-01-02"
+)
 
-type MetricSaver interface {
+type MetricService interface {
 	Save(ctx context.Context, metric models.Metric) error
 	SaveBatch(ctx context.Context, metrics []models.Metric) (int64, error)
+	GetDaily(ctx context.Context, filter models.DailyFilter) ([]models.DailyMetric, error)
 }
 
 type MetricHandler struct {
-	svc MetricSaver
+	svc MetricService
 }
 
-func NewMetricHandler(svc MetricSaver) *MetricHandler {
+func NewMetricHandler(svc MetricService) *MetricHandler {
 	return &MetricHandler{svc: svc}
 }
 
@@ -45,7 +50,7 @@ func (h *MetricHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.Save(r.Context(), req.toModel()); err != nil {
-		writeSaveError(w, err)
+		writeServiceError(w, err)
 		return
 	}
 
@@ -65,7 +70,7 @@ func (h *MetricHandler) CreateBatch(w http.ResponseWriter, r *http.Request) {
 
 	inserted, err := h.svc.SaveBatch(r.Context(), metrics)
 	if err != nil {
-		writeSaveError(w, err)
+		writeServiceError(w, err)
 		return
 	}
 
@@ -73,6 +78,84 @@ func (h *MetricHandler) CreateBatch(w http.ResponseWriter, r *http.Request) {
 		Inserted: inserted,
 		Skipped:  int64(len(metrics)) - inserted,
 	})
+}
+
+type dailyMetricResponse struct {
+	Date             string `json:"date"`
+	Requests         int64  `json:"requests"`
+	Landings         int64  `json:"landings"`
+	ApiRegisterTotal int64  `json:"api_register_total"`
+	ApiRegisterScam  int64  `json:"api_register_scam"`
+}
+
+type dailyResponse struct {
+	Items []dailyMetricResponse `json:"items"`
+}
+
+func (h *MetricHandler) Daily(w http.ResponseWriter, r *http.Request) {
+	filter, err := parseDailyFilter(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	stats, err := h.svc.GetDaily(r.Context(), filter)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	resp := dailyResponse{Items: make([]dailyMetricResponse, len(stats))}
+	for i, st := range stats {
+		resp.Items[i] = dailyMetricResponse{
+			Date:             st.Date.Format(dateLayout),
+			Requests:         st.Requests,
+			Landings:         st.Landings,
+			ApiRegisterTotal: st.ApiRegisterTotal,
+			ApiRegisterScam:  st.ApiRegisterScam,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func parseDailyFilter(r *http.Request) (models.DailyFilter, error) {
+	q := r.URL.Query()
+	var f models.DailyFilter
+
+	clientID, err := parseInt32(q.Get("client_id"))
+	if err != nil {
+		return f, errors.New("client_id: " + err.Error())
+	}
+	f.ClientID = clientID
+
+	if raw := q.Get("app_id"); raw != "" {
+		appID, err := parseInt32(raw)
+		if err != nil {
+			return f, errors.New("app_id: " + err.Error())
+		}
+		f.AppID = &appID
+	}
+
+	if f.From, err = time.Parse(dateLayout, q.Get("from")); err != nil {
+		return f, errors.New("from: expected date in YYYY-MM-DD format")
+	}
+	if f.To, err = time.Parse(dateLayout, q.Get("to")); err != nil {
+		return f, errors.New("to: expected date in YYYY-MM-DD format")
+	}
+
+	return f, nil
+}
+
+func parseInt32(s string) (int32, error) {
+	if s == "" {
+		return 0, errors.New("is required")
+	}
+	v, err := strconv.ParseInt(s, 10, 32)
+	if err != nil {
+		return 0, errors.New("must be an integer")
+	}
+	return int32(v), nil
 }
 
 type batchResponse struct {
@@ -106,14 +189,14 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
-func writeSaveError(w http.ResponseWriter, err error) {
+func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, service.ErrValidation):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, repository.ErrDuplicate):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
-		log.Printf("save metric: %v", err)
+		log.Printf("metric service: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 	}
 }

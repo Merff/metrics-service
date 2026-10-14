@@ -26,6 +26,7 @@ func NewRouter(metrics *MetricHandler, db HealthChecker) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/metrics", metrics.Create)
 		r.Post("/metrics/batch", metrics.CreateBatch)
+		r.Get("/metrics/daily", metrics.Daily)
 	})
 
 	return r

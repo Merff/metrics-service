@@ -8,6 +8,7 @@ import (
 
 	"metrics-service/internal/models"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -122,6 +123,52 @@ func (r *MetricRepository) InsertBatch(
 	}
 
 	return tag.RowsAffected(), nil
+}
+
+func (r *MetricRepository) DailyStats(
+	ctx context.Context,
+	clientID int32,
+	appID *int32,
+	from time.Time,
+	to time.Time,
+) ([]models.DailyMetric, error) {
+	query := `
+    SELECT
+      (timestamp AT TIME ZONE 'UTC')::date AS day,
+      SUM(requests),
+      SUM(landings),
+      SUM(api_register_total),
+      SUM(api_register_scam)
+    FROM metrics
+    WHERE client_id = $1
+      AND ($2::int IS NULL OR app_id = $2)
+      AND timestamp >= $3
+      AND timestamp < $4
+    GROUP BY day
+    ORDER BY day
+  `
+
+	rows, err := r.db.Query(ctx, query, clientID, appID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("query daily stats: %w", err)
+	}
+
+	result, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (models.DailyMetric, error) {
+		var m models.DailyMetric
+		err := row.Scan(
+			&m.Date,
+			&m.Requests,
+			&m.Landings,
+			&m.ApiRegisterTotal,
+			&m.ApiRegisterScam,
+		)
+		return m, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan daily stats: %w", err)
+	}
+
+	return result, nil
 }
 
 func mapError(err error, op string) error {
