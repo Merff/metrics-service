@@ -24,6 +24,10 @@ func main() {
 
 	cfg := config.Load()
 
+	if err := storage.MigrateUp(cfg.DatabaseURL); err != nil {
+		log.Fatal(err)
+	}
+
 	pool, err := storage.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal(err)

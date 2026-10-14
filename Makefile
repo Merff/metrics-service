@@ -1,21 +1,16 @@
 DATABASE_URL ?= postgres://postgres:postgres@localhost:5433/metrics?sslmode=disable
-TEST_DB_NAME ?= metrics_test
-TEST_DATABASE_URL ?= postgres://postgres:postgres@localhost:5433/$(TEST_DB_NAME)?sslmode=disable
+TEST_DATABASE_URL ?= postgres://postgres:postgres@localhost:5433/metrics_test?sslmode=disable
+MIGRATE = go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.1 -path migrations -database "$(DATABASE_URL)"
 
-.PHONY: migrate-up migrate-down test-db test lint run
+.PHONY: migrate-up migrate-down test lint run
 
 migrate-up:
-	migrate -path migrations -database "$(DATABASE_URL)" up
+	$(MIGRATE) up
 
 migrate-down:
-	migrate -path migrations -database "$(DATABASE_URL)" down 1
+	$(MIGRATE) down 1
 
-test-db:
-	docker compose exec -T postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$(TEST_DB_NAME)'" | grep -q 1 \
-		|| docker compose exec -T postgres createdb -U postgres $(TEST_DB_NAME)
-	migrate -path migrations -database "$(TEST_DATABASE_URL)" up
-
-test: test-db
+test:
 	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test ./...
 
 lint:

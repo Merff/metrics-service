@@ -15,14 +15,17 @@ MVP: HTTP API на приём метрик — по одной (`POST /api/v1/me
 - Go 1.26, модуль `metrics-service`
 - PostgreSQL 17 (docker-compose, порт **5433** на хосте)
 - `pgx/v5` + `pgxpool` — драйвер, без ORM, SQL пишется руками
-- `golang-migrate` — миграции в `migrations/` (`NNNNNN_name.up.sql` / `.down.sql`)
+- `golang-migrate/v4` как Go-библиотека (драйвер `pgx/v5`, источник `iofs`) — миграции в `migrations/`
+  (`NNNNNN_name.up.sql` / `.down.sql`), встроены в бинарник через `embed` (`migrations/migrations.go`).
+  Ставить CLI `migrate` не нужно: `make migrate-*` запускает официальный CLI через `go run`.
 - `chi/v5` — HTTP-роутер и middleware (хендлеры — обычные `http.HandlerFunc`)
 - `testify/require` — в тестах
 
 ## Структура
-- `cmd/server/` — точка входа: сборка зависимостей, HTTP-сервер, graceful shutdown по SIGINT/SIGTERM
+- `cmd/server/` — точка входа: миграции при старте, сборка зависимостей, HTTP-сервер,
+  graceful shutdown по SIGINT/SIGTERM
 - `internal/config/` — конфигурация из env (`DATABASE_URL`, `HTTP_ADDR`; есть дефолты для локальной разработки)
-- `internal/storage/` — создание пула `pgxpool` с пингом при старте
+- `internal/storage/` — создание пула `pgxpool` с пингом при старте; `MigrateUp`
 - `internal/models/` — доменные структуры
 - `internal/repository/` — доступ к БД, один репозиторий на сущность; ошибки Postgres маппит в
   доменные (`ErrDuplicate` на unique violation)
@@ -38,11 +41,10 @@ MVP: HTTP API на приём метрик — по одной (`POST /api/v1/me
 ## Команды
 ```bash
 docker compose up -d   # поднять Postgres
-make migrate-up        # применить миграции
+make migrate-up        # применить миграции (сервер и так применяет их при старте)
 make migrate-down      # откатить одну миграцию
 make run               # запустить сервер
-make test-db           # создать и смигрировать тестовую БД metrics_test
-make test              # тесты (сам вызывает test-db; нужен запущенный docker compose)
+make test              # тесты (нужен запущенный docker compose)
 make lint              # golangci-lint
 ```
 `DATABASE_URL` можно переопределить: `make test DATABASE_URL=...`. Сервер по умолчанию слушает `:8080`.
@@ -55,6 +57,8 @@ make lint              # golangci-lint
 - Тесты репозиториев — интеграционные, ходят в реальную БД. Это намеренно:
   тесты **не должны** проходить без БД, не мокать БД и не скипать тесты при её отсутствии.
 - Тесты работают с отдельной БД `metrics_test` (`TEST_DATABASE_URL`), не с рабочей `metrics`.
+  `TestMain` в `internal/repository/helpers_test.go` сам создаёт эту БД, если её нет, и накатывает миграции,
+  поэтому работает и голый `go test ./...`.
   Репозиторий в тестах получать только через `newTestRepo(t)` (`internal/repository/helpers_test.go`):
   он делает `TRUNCATE` до и после теста и отказывается работать с БД, чьё имя не оканчивается на `_test`.
   Тесты с БД не помечать `t.Parallel()`; новые таблицы добавлять в `TRUNCATE` в хелпере.
