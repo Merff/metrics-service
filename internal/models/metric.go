@@ -3,7 +3,6 @@ package models
 import "time"
 
 type Metric struct {
-	ID               int32
 	ClientID         int32
 	AppID            int32
 	Requests         int32

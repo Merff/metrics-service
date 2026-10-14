@@ -17,9 +17,6 @@ func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
 
-	cfg.MaxConns = 10
-	cfg.MaxConnIdleTime = 5 * time.Minute
-
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)

@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type fakeSaver struct {
+type fakeService struct {
 	err      error
 	inserted int64
 	saved    []models.Metric
@@ -25,12 +25,12 @@ type fakeSaver struct {
 	filter   models.DailyFilter
 }
 
-func (f *fakeSaver) Save(_ context.Context, m models.Metric) error {
+func (f *fakeService) Save(_ context.Context, m models.Metric) error {
 	f.saved = append(f.saved, m)
 	return f.err
 }
 
-func (f *fakeSaver) SaveBatch(_ context.Context, ms []models.Metric) (int64, error) {
+func (f *fakeService) SaveBatch(_ context.Context, ms []models.Metric) (int64, error) {
 	f.saved = append(f.saved, ms...)
 	if f.err != nil {
 		return 0, f.err
@@ -38,7 +38,7 @@ func (f *fakeSaver) SaveBatch(_ context.Context, ms []models.Metric) (int64, err
 	return f.inserted, nil
 }
 
-func (f *fakeSaver) GetDaily(_ context.Context, filter models.DailyFilter) ([]models.DailyMetric, error) {
+func (f *fakeService) GetDaily(_ context.Context, filter models.DailyFilter) ([]models.DailyMetric, error) {
 	f.filter = filter
 	if f.err != nil {
 		return nil, f.err
@@ -80,7 +80,7 @@ func TestCreateMetric(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			saver := &fakeSaver{err: tt.saveErr}
+			saver := &fakeService{err: tt.saveErr}
 			router := transport.NewRouter(transport.NewMetricHandler(saver), okPinger{})
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/metrics", strings.NewReader(tt.body))
@@ -116,7 +116,7 @@ func TestCreateMetricsBatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			saver := &fakeSaver{err: tt.saveErr, inserted: tt.inserted}
+			saver := &fakeService{err: tt.saveErr, inserted: tt.inserted}
 			router := transport.NewRouter(transport.NewMetricHandler(saver), okPinger{})
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/metrics/batch", strings.NewReader(tt.body))
@@ -161,7 +161,7 @@ func TestDailyMetrics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			saver := &fakeSaver{err: tt.saveErr, daily: tt.daily}
+			saver := &fakeService{err: tt.saveErr, daily: tt.daily}
 			router := transport.NewRouter(transport.NewMetricHandler(saver), okPinger{})
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/daily?"+tt.query, nil)

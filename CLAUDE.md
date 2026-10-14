@@ -47,7 +47,8 @@ make run               # запустить сервер
 make test              # тесты (нужен запущенный docker compose)
 make lint              # golangci-lint
 ```
-`DATABASE_URL` можно переопределить: `make test DATABASE_URL=...`. Сервер по умолчанию слушает `:8080`.
+Адреса БД переопределяются переменными окружения (`DATABASE_URL`, `TEST_DATABASE_URL`); дефолты живут только
+в `internal/config` (Makefile держит `DATABASE_URL` лишь для `migrate-*`). Сервер по умолчанию слушает `:8080`.
 
 Тесты хендлеров (`internal/transport/http`) и сервиса (`internal/service`) используют фейки и БД не требуют.
 
