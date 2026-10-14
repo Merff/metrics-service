@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"metrics-service/internal/models"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -64,34 +64,64 @@ func (r *MetricRepository) Insert(
 func (r *MetricRepository) InsertBatch(
 	ctx context.Context,
 	metrics []models.Metric,
-) error {
-	_, err := r.db.CopyFrom(
-		ctx,
-		pgx.Identifier{"metrics"},
-		[]string{
-			"client_id",
-			"app_id",
-			"requests",
-			"landings",
-			"api_register_total",
-			"api_register_scam",
-			"timestamp",
-		},
-		pgx.CopyFromSlice(len(metrics), func(i int) ([]any, error) {
-			m := metrics[i]
-			return []any{
-				m.ClientID,
-				m.AppID,
-				m.Requests,
-				m.Landings,
-				m.ApiRegisterTotal,
-				m.ApiRegisterScam,
-				m.Timestamp,
-			}, nil
-		}),
-	)
+) (int64, error) {
+	query := `
+    INSERT INTO metrics (
+      client_id,
+      app_id,
+      requests,
+      landings,
+      api_register_total,
+      api_register_scam,
+      timestamp
+    )
+    SELECT * FROM unnest(
+      $1::int[],
+      $2::int[],
+      $3::int[],
+      $4::int[],
+      $5::int[],
+      $6::int[],
+      $7::timestamptz[]
+    )
+    ON CONFLICT (client_id, app_id, timestamp) DO NOTHING
+  `
 
-	return mapError(err, "insert metrics batch")
+	n := len(metrics)
+	clientIDs := make([]int32, n)
+	appIDs := make([]int32, n)
+	requests := make([]int32, n)
+	landings := make([]int32, n)
+	registerTotal := make([]int32, n)
+	registerScam := make([]int32, n)
+	timestamps := make([]time.Time, n)
+
+	for i, m := range metrics {
+		clientIDs[i] = m.ClientID
+		appIDs[i] = m.AppID
+		requests[i] = m.Requests
+		landings[i] = m.Landings
+		registerTotal[i] = m.ApiRegisterTotal
+		registerScam[i] = m.ApiRegisterScam
+		timestamps[i] = m.Timestamp
+	}
+
+	tag, err := r.db.Exec(
+		ctx,
+		query,
+		clientIDs,
+		appIDs,
+		requests,
+		landings,
+		registerTotal,
+		registerScam,
+		timestamps,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("insert metrics batch: %w", err)
+	}
+
+	return tag.RowsAffected(), nil
 }
 
 func mapError(err error, op string) error {

@@ -54,10 +54,14 @@ func TestInsertMetricsBatch(t *testing.T) {
 	metrics := []models.Metric{
 		{ClientID: 1, AppID: 1, Requests: 10, Landings: 5, ApiRegisterTotal: 3, ApiRegisterScam: 1, Timestamp: now},
 		{ClientID: 1, AppID: 2, Requests: 20, Landings: 6, ApiRegisterTotal: 4, ApiRegisterScam: 0, Timestamp: now},
+		{ClientID: 1, AppID: 2, Requests: 20, Landings: 6, ApiRegisterTotal: 4, ApiRegisterScam: 0, Timestamp: now},
 	}
 
-	require.NoError(t, repo.InsertBatch(ctx, metrics))
+	inserted, err := repo.InsertBatch(ctx, metrics)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, inserted)
 
-	err = repo.InsertBatch(ctx, metrics)
-	require.ErrorIs(t, err, repository.ErrDuplicate)
+	inserted, err = repo.InsertBatch(ctx, metrics)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, inserted)
 }

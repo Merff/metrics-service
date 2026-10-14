@@ -17,7 +17,7 @@ const maxBodyBytes = 1 << 20
 
 type MetricSaver interface {
 	Save(ctx context.Context, metric models.Metric) error
-	SaveBatch(ctx context.Context, metrics []models.Metric) error
+	SaveBatch(ctx context.Context, metrics []models.Metric) (int64, error)
 }
 
 type MetricHandler struct {
@@ -63,12 +63,21 @@ func (h *MetricHandler) CreateBatch(w http.ResponseWriter, r *http.Request) {
 		metrics[i] = m.toModel()
 	}
 
-	if err := h.svc.SaveBatch(r.Context(), metrics); err != nil {
+	inserted, err := h.svc.SaveBatch(r.Context(), metrics)
+	if err != nil {
 		writeSaveError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]int{"inserted": len(metrics)})
+	writeJSON(w, http.StatusOK, batchResponse{
+		Inserted: inserted,
+		Skipped:  int64(len(metrics)) - inserted,
+	})
+}
+
+type batchResponse struct {
+	Inserted int64 `json:"inserted"`
+	Skipped  int64 `json:"skipped"`
 }
 
 func (req createMetricRequest) toModel() models.Metric {

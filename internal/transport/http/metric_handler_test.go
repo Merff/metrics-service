@@ -17,8 +17,9 @@ import (
 )
 
 type fakeSaver struct {
-	err   error
-	saved []models.Metric
+	err      error
+	inserted int64
+	saved    []models.Metric
 }
 
 func (f *fakeSaver) Save(_ context.Context, m models.Metric) error {
@@ -26,9 +27,12 @@ func (f *fakeSaver) Save(_ context.Context, m models.Metric) error {
 	return f.err
 }
 
-func (f *fakeSaver) SaveBatch(_ context.Context, ms []models.Metric) error {
+func (f *fakeSaver) SaveBatch(_ context.Context, ms []models.Metric) (int64, error) {
 	f.saved = append(f.saved, ms...)
-	return f.err
+	if f.err != nil {
+		return 0, f.err
+	}
+	return f.inserted, nil
 }
 
 type okPinger struct{}
@@ -76,23 +80,28 @@ func TestCreateMetric(t *testing.T) {
 }
 
 func TestCreateMetricsBatch(t *testing.T) {
+	twoItems := "[" + validBody + "," + validBody + "]"
+
 	tests := []struct {
 		name       string
 		body       string
+		inserted   int64
 		saveErr    error
 		wantStatus int
+		wantBody   string
 		wantSaved  int
 	}{
-		{name: "ok", body: "[" + validBody + "," + validBody + "]", wantStatus: http.StatusCreated, wantSaved: 2},
+		{name: "all inserted", body: twoItems, inserted: 2, wantStatus: http.StatusOK, wantBody: `{"inserted":2,"skipped":0}`, wantSaved: 2},
+		{name: "duplicates skipped", body: twoItems, inserted: 1, wantStatus: http.StatusOK, wantBody: `{"inserted":1,"skipped":1}`, wantSaved: 2},
 		{name: "not an array", body: validBody, wantStatus: http.StatusBadRequest},
 		{name: "unknown field", body: `[{"foo": 1}]`, wantStatus: http.StatusBadRequest},
 		{name: "validation error", body: "[" + validBody + "]", saveErr: fmt.Errorf("%w: bad", service.ErrValidation), wantStatus: http.StatusBadRequest, wantSaved: 1},
-		{name: "duplicate", body: "[" + validBody + "]", saveErr: repository.ErrDuplicate, wantStatus: http.StatusConflict, wantSaved: 1},
+		{name: "internal error", body: "[" + validBody + "]", saveErr: fmt.Errorf("boom"), wantStatus: http.StatusInternalServerError, wantSaved: 1},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			saver := &fakeSaver{err: tt.saveErr}
+			saver := &fakeSaver{err: tt.saveErr, inserted: tt.inserted}
 			router := transport.NewRouter(transport.NewMetricHandler(saver), okPinger{})
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/metrics/batch", strings.NewReader(tt.body))
@@ -102,6 +111,9 @@ func TestCreateMetricsBatch(t *testing.T) {
 
 			require.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
 			require.Len(t, saver.saved, tt.wantSaved)
+			if tt.wantBody != "" {
+				require.JSONEq(t, tt.wantBody, rec.Body.String())
+			}
 		})
 	}
 }

@@ -17,9 +17,9 @@ type fakeRepo struct {
 
 func (f *fakeRepo) Insert(context.Context, models.Metric) error { return nil }
 
-func (f *fakeRepo) InsertBatch(_ context.Context, ms []models.Metric) error {
+func (f *fakeRepo) InsertBatch(_ context.Context, ms []models.Metric) (int64, error) {
 	f.batches = append(f.batches, ms)
-	return nil
+	return int64(len(ms)), nil
 }
 
 func validMetric() models.Metric {
@@ -51,10 +51,11 @@ func TestSaveBatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &fakeRepo{}
-			err := service.NewMetricService(repo).SaveBatch(context.Background(), tt.metrics)
+			inserted, err := service.NewMetricService(repo).SaveBatch(context.Background(), tt.metrics)
 
 			if tt.wantErr == "" {
 				require.NoError(t, err)
+				require.EqualValues(t, len(tt.metrics), inserted)
 				require.Len(t, repo.batches, 1)
 				return
 			}
