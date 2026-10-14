@@ -2,11 +2,18 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"metrics-service/internal/models"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+const uniqueViolation = "23505"
+
+var ErrDuplicate = errors.New("metric already exists")
 
 type MetricRepository struct {
 	db *pgxpool.Pool
@@ -50,5 +57,13 @@ func (r *MetricRepository) Insert(
 		metric.Timestamp,
 	)
 
-	return err
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+		return ErrDuplicate
+	}
+	if err != nil {
+		return fmt.Errorf("insert metric: %w", err)
+	}
+
+	return nil
 }

@@ -3,6 +3,7 @@ module metrics-service
 go 1.26.4
 
 require (
+	github.com/go-chi/chi/v5 v5.4.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/stretchr/testify v1.11.1
 )

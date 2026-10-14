@@ -1,25 +1,30 @@
 # metrics-service
 
 Go-сервис для хранения метрик клиентских приложений в PostgreSQL.
-Сейчас есть только слой хранения (модель, репозиторий с `Insert`, миграции);
-API и чтения метрик ещё нет. `cmd/server/main.go` пока просто вставляет тестовую метрику.
+MVP: HTTP API на приём метрик (`POST /api/v1/metrics`) и healthcheck (`GET /healthz`).
+Чтения и агрегаций метрик пока нет.
 
 ## Стек
 - Go 1.26, модуль `metrics-service`
 - PostgreSQL 17 (docker-compose, порт **5433** на хосте)
 - `pgx/v5` + `pgxpool` — драйвер, без ORM, SQL пишется руками
 - `golang-migrate` — миграции в `migrations/` (`NNNNNN_name.up.sql` / `.down.sql`)
+- `chi/v5` — HTTP-роутер и middleware (хендлеры — обычные `http.HandlerFunc`)
 - `testify/require` — в тестах
 
 ## Структура
-- `cmd/server/` — точка входа: только сборка зависимостей и запуск
-- `internal/config/` — конфигурация из env (`DATABASE_URL`, есть дефолт для локальной разработки)
+- `cmd/server/` — точка входа: сборка зависимостей, HTTP-сервер, graceful shutdown по SIGINT/SIGTERM
+- `internal/config/` — конфигурация из env (`DATABASE_URL`, `HTTP_ADDR`; есть дефолты для локальной разработки)
 - `internal/storage/` — создание пула `pgxpool` с пингом при старте
 - `internal/models/` — доменные структуры
-- `internal/repository/` — доступ к БД, один репозиторий на сущность
+- `internal/repository/` — доступ к БД, один репозиторий на сущность; ошибки Postgres маппит в
+  доменные (`ErrDuplicate` на unique violation)
+- `internal/service/` — бизнес-логика и валидация (`ErrValidation`)
+- `internal/transport/http/` — роутер, хендлеры, DTO запросов с json-тегами (в `models` json-тегов нет)
 - `migrations/` — SQL-миграции
 
-Когда появится API: бизнес-логику класть в `internal/service/`, хендлеры — в `internal/transport/http/`.
+Поток запроса: handler → service → repository. Хендлер маппит ошибки в HTTP-коды:
+`ErrValidation` → 400, `ErrDuplicate` → 409, прочее → 500 (с логированием).
 Интерфейсы репозиториев объявлять на стороне потребителя (в `service`), не рядом с реализацией.
 Не добавлять лишних слоёв и пакетов (`pkg/`, usecase/adapter и т.п.) без реальной необходимости.
 
@@ -32,7 +37,9 @@ make run               # запустить сервер
 make test              # тесты (нужна запущенная БД с применёнными миграциями)
 make lint              # golangci-lint
 ```
-`DATABASE_URL` можно переопределить: `make test DATABASE_URL=...`.
+`DATABASE_URL` можно переопределить: `make test DATABASE_URL=...`. Сервер по умолчанию слушает `:8080`.
+
+Тесты хендлеров (`internal/transport/http`) используют фейковый сервис и БД не требуют.
 
 ## Соглашения
 - Не делай сам коммиты
