@@ -5,27 +5,16 @@ import (
 	"testing"
 	"time"
 
-	"metrics-service/internal/config"
 	"metrics-service/internal/models"
-	"metrics-service/internal/repository"
-	"metrics-service/internal/storage"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestInsertMetric(t *testing.T) {
-
 	ctx := context.Background()
+	repo := newTestRepo(t)
 
-	db, err := storage.NewPool(ctx, config.Load().DatabaseURL)
-
-	require.NoError(t, err)
-
-	defer db.Close()
-
-	repo := repository.NewMetricRepository(db)
-
-	err = repo.Insert(
+	err := repo.Insert(
 		ctx,
 		models.Metric{
 			ClientID:         1,
@@ -43,12 +32,7 @@ func TestInsertMetric(t *testing.T) {
 
 func TestInsertMetricsBatch(t *testing.T) {
 	ctx := context.Background()
-
-	db, err := storage.NewPool(ctx, config.Load().DatabaseURL)
-	require.NoError(t, err)
-	defer db.Close()
-
-	repo := repository.NewMetricRepository(db)
+	repo := newTestRepo(t)
 
 	now := time.Now()
 	metrics := []models.Metric{
@@ -68,18 +52,13 @@ func TestInsertMetricsBatch(t *testing.T) {
 
 func TestDailyStats(t *testing.T) {
 	ctx := context.Background()
+	repo := newTestRepo(t)
 
-	db, err := storage.NewPool(ctx, config.Load().DatabaseURL)
-	require.NoError(t, err)
-	defer db.Close()
-
-	repo := repository.NewMetricRepository(db)
-
-	clientID := int32(time.Now().UnixNano()%1_000_000_000) + 1_000
+	const clientID = 1
 	day1 := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	day2 := day1.AddDate(0, 0, 1)
 
-	_, err = repo.InsertBatch(ctx, []models.Metric{
+	_, err := repo.InsertBatch(ctx, []models.Metric{
 		{ClientID: clientID, AppID: 1, Requests: 10, Landings: 1, ApiRegisterTotal: 5, ApiRegisterScam: 1, Timestamp: day1.Add(1 * time.Hour)},
 		{ClientID: clientID, AppID: 1, Requests: 20, Landings: 2, ApiRegisterTotal: 6, ApiRegisterScam: 2, Timestamp: day1.Add(23 * time.Hour)},
 		{ClientID: clientID, AppID: 2, Requests: 30, Landings: 3, ApiRegisterTotal: 7, ApiRegisterScam: 3, Timestamp: day1.Add(2 * time.Hour)},
