@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"metrics-service/internal/config"
 	"metrics-service/internal/models"
 	"metrics-service/internal/repository"
+	"metrics-service/internal/storage"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,10 +17,7 @@ func TestInsertMetric(t *testing.T) {
 
 	ctx := context.Background()
 
-	db, err := pgxpool.New(
-		ctx,
-		"postgres://postgres:postgres@localhost:5433/metrics",
-	)
+	db, err := storage.NewPool(ctx, config.Load().DatabaseURL)
 
 	require.NoError(t, err)
 
@@ -30,13 +28,13 @@ func TestInsertMetric(t *testing.T) {
 	err = repo.Insert(
 		ctx,
 		models.Metric{
-			ClientID:  1,
-		  AppID:     1,
-		  Requests:  200,
-		  Landings:  50,
-		  ApiRegisterTotal: 100,
-		  ApiRegisterScam:  10,
-		  Timestamp: time.Now(),
+			ClientID:         1,
+			AppID:            1,
+			Requests:         200,
+			Landings:         50,
+			ApiRegisterTotal: 100,
+			ApiRegisterScam:  10,
+			Timestamp:        time.Now(),
 		},
 	)
 

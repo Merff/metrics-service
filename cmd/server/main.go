@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"metrics-service/internal/config"
 	"metrics-service/internal/models"
 	"metrics-service/internal/repository"
 	"metrics-service/internal/storage"
@@ -13,10 +14,9 @@ import (
 func main() {
 	ctx := context.Background()
 
-	pool, err := storage.NewPool(
-		ctx,
-		"postgres://postgres:postgres@localhost:5433/metrics",
-	)
+	cfg := config.Load()
+
+	pool, err := storage.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -28,13 +28,13 @@ func main() {
 	err = repo.Insert(
 		ctx,
 		models.Metric{
-			ClientID:  1,
-		  AppID:     1,
-		  Requests:  200,
-		  Landings:  50,
-		  ApiRegisterTotal: 100,
-		  ApiRegisterScam:  10,
-		  Timestamp: time.Now(),
+			ClientID:         1,
+			AppID:            1,
+			Requests:         200,
+			Landings:         50,
+			ApiRegisterTotal: 100,
+			ApiRegisterScam:  10,
+			Timestamp:        time.Now(),
 		},
 	)
 

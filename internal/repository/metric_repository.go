@@ -1,31 +1,31 @@
 package repository
 
 import (
-  "context"
+	"context"
 
-  "metrics-service/internal/models"
+	"metrics-service/internal/models"
 
-  "github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type MetricRepository struct {
-  db *pgxpool.Pool
+	db *pgxpool.Pool
 }
 
 func NewMetricRepository(
-  db *pgxpool.Pool,
+	db *pgxpool.Pool,
 ) *MetricRepository {
-  return &MetricRepository{
-    db: db,
-  }
+	return &MetricRepository{
+		db: db,
+	}
 }
 
 func (r *MetricRepository) Insert(
-  ctx context.Context,
-  metric models.Metric,
+	ctx context.Context,
+	metric models.Metric,
 ) error {
 
-  query := `
+	query := `
     INSERT INTO metrics (
       client_id,
       app_id,
@@ -38,17 +38,17 @@ func (r *MetricRepository) Insert(
     VALUES ($1, $2, $3, $4, $5, $6, $7)
   `
 
-  _, err := r.db.Exec(
-    ctx,
-    query,
-    metric.ClientID,
-    metric.AppID,
-    metric.Requests,
-    metric.Landings,
-    metric.ApiRegisterTotal,
-    metric.ApiRegisterScam,
-    metric.Timestamp,
-  )
+	_, err := r.db.Exec(
+		ctx,
+		query,
+		metric.ClientID,
+		metric.AppID,
+		metric.Requests,
+		metric.Landings,
+		metric.ApiRegisterTotal,
+		metric.ApiRegisterScam,
+		metric.Timestamp,
+	)
 
-  return err
+	return err
 }
