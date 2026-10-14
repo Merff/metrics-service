@@ -1,7 +1,9 @@
 # metrics-service
 
 Go-сервис для хранения метрик клиентских приложений в PostgreSQL.
-MVP: HTTP API на приём метрик (`POST /api/v1/metrics`) и healthcheck (`GET /healthz`).
+MVP: HTTP API на приём метрик — по одной (`POST /api/v1/metrics`) и батчем
+(`POST /api/v1/metrics/batch`, JSON-массив, до `service.MaxBatchSize` = 1000 штук), и healthcheck (`GET /healthz`).
+Батч атомарный: пишется через `pgx.CopyFrom`, при любой ошибке (валидация, дубликат) не сохраняется ничего.
 Чтения и агрегаций метрик пока нет.
 
 ## Стек
@@ -39,7 +41,7 @@ make lint              # golangci-lint
 ```
 `DATABASE_URL` можно переопределить: `make test DATABASE_URL=...`. Сервер по умолчанию слушает `:8080`.
 
-Тесты хендлеров (`internal/transport/http`) используют фейковый сервис и БД не требуют.
+Тесты хендлеров (`internal/transport/http`) и сервиса (`internal/service`) используют фейки и БД не требуют.
 
 ## Соглашения
 - Не делай сам коммиты

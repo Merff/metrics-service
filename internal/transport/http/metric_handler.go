@@ -17,6 +17,7 @@ const maxBodyBytes = 1 << 20
 
 type MetricSaver interface {
 	Save(ctx context.Context, metric models.Metric) error
+	SaveBatch(ctx context.Context, metrics []models.Metric) error
 }
 
 type MetricHandler struct {
@@ -38,18 +39,40 @@ type createMetricRequest struct {
 }
 
 func (h *MetricHandler) Create(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-
 	var req createMetricRequest
-	if err := dec.Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 
-	err := h.svc.Save(r.Context(), models.Metric{
+	if err := h.svc.Save(r.Context(), req.toModel()); err != nil {
+		writeSaveError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (h *MetricHandler) CreateBatch(w http.ResponseWriter, r *http.Request) {
+	var req []createMetricRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	metrics := make([]models.Metric, len(req))
+	for i, m := range req {
+		metrics[i] = m.toModel()
+	}
+
+	if err := h.svc.SaveBatch(r.Context(), metrics); err != nil {
+		writeSaveError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]int{"inserted": len(metrics)})
+}
+
+func (req createMetricRequest) toModel() models.Metric {
+	return models.Metric{
 		ClientID:         req.ClientID,
 		AppID:            req.AppID,
 		Requests:         req.Requests,
@@ -57,11 +80,25 @@ func (h *MetricHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ApiRegisterTotal: req.ApiRegisterTotal,
 		ApiRegisterScam:  req.ApiRegisterScam,
 		Timestamp:        req.Timestamp,
-	})
+	}
+}
 
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(dst); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return false
+	}
+
+	return true
+}
+
+func writeSaveError(w http.ResponseWriter, err error) {
 	switch {
-	case err == nil:
-		w.WriteHeader(http.StatusCreated)
 	case errors.Is(err, service.ErrValidation):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, repository.ErrDuplicate):

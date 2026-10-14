@@ -26,6 +26,11 @@ func (f *fakeSaver) Save(_ context.Context, m models.Metric) error {
 	return f.err
 }
 
+func (f *fakeSaver) SaveBatch(_ context.Context, ms []models.Metric) error {
+	f.saved = append(f.saved, ms...)
+	return f.err
+}
+
 type okPinger struct{}
 
 func (okPinger) Ping(context.Context) error { return nil }
@@ -66,6 +71,37 @@ func TestCreateMetric(t *testing.T) {
 			router.ServeHTTP(rec, req)
 
 			require.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
+		})
+	}
+}
+
+func TestCreateMetricsBatch(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		saveErr    error
+		wantStatus int
+		wantSaved  int
+	}{
+		{name: "ok", body: "[" + validBody + "," + validBody + "]", wantStatus: http.StatusCreated, wantSaved: 2},
+		{name: "not an array", body: validBody, wantStatus: http.StatusBadRequest},
+		{name: "unknown field", body: `[{"foo": 1}]`, wantStatus: http.StatusBadRequest},
+		{name: "validation error", body: "[" + validBody + "]", saveErr: fmt.Errorf("%w: bad", service.ErrValidation), wantStatus: http.StatusBadRequest, wantSaved: 1},
+		{name: "duplicate", body: "[" + validBody + "]", saveErr: repository.ErrDuplicate, wantStatus: http.StatusConflict, wantSaved: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			saver := &fakeSaver{err: tt.saveErr}
+			router := transport.NewRouter(transport.NewMetricHandler(saver), okPinger{})
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/metrics/batch", strings.NewReader(tt.body))
+			rec := httptest.NewRecorder()
+
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
+			require.Len(t, saver.saved, tt.wantSaved)
 		})
 	}
 }

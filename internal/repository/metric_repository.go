@@ -7,6 +7,7 @@ import (
 
 	"metrics-service/internal/models"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -57,13 +58,51 @@ func (r *MetricRepository) Insert(
 		metric.Timestamp,
 	)
 
+	return mapError(err, "insert metric")
+}
+
+func (r *MetricRepository) InsertBatch(
+	ctx context.Context,
+	metrics []models.Metric,
+) error {
+	_, err := r.db.CopyFrom(
+		ctx,
+		pgx.Identifier{"metrics"},
+		[]string{
+			"client_id",
+			"app_id",
+			"requests",
+			"landings",
+			"api_register_total",
+			"api_register_scam",
+			"timestamp",
+		},
+		pgx.CopyFromSlice(len(metrics), func(i int) ([]any, error) {
+			m := metrics[i]
+			return []any{
+				m.ClientID,
+				m.AppID,
+				m.Requests,
+				m.Landings,
+				m.ApiRegisterTotal,
+				m.ApiRegisterScam,
+				m.Timestamp,
+			}, nil
+		}),
+	)
+
+	return mapError(err, "insert metrics batch")
+}
+
+func mapError(err error, op string) error {
+	if err == nil {
+		return nil
+	}
+
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
 		return ErrDuplicate
 	}
-	if err != nil {
-		return fmt.Errorf("insert metric: %w", err)
-	}
 
-	return nil
+	return fmt.Errorf("%s: %w", op, err)
 }

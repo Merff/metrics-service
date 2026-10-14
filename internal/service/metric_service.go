@@ -8,10 +8,13 @@ import (
 	"metrics-service/internal/models"
 )
 
+const MaxBatchSize = 1000
+
 var ErrValidation = errors.New("validation error")
 
 type MetricRepository interface {
 	Insert(ctx context.Context, metric models.Metric) error
+	InsertBatch(ctx context.Context, metrics []models.Metric) error
 }
 
 type MetricService struct {
@@ -28,6 +31,23 @@ func (s *MetricService) Save(ctx context.Context, metric models.Metric) error {
 	}
 
 	return s.repo.Insert(ctx, metric)
+}
+
+func (s *MetricService) SaveBatch(ctx context.Context, metrics []models.Metric) error {
+	if len(metrics) == 0 {
+		return fmt.Errorf("%w: batch is empty", ErrValidation)
+	}
+	if len(metrics) > MaxBatchSize {
+		return fmt.Errorf("%w: batch size %d exceeds limit %d", ErrValidation, len(metrics), MaxBatchSize)
+	}
+
+	for i, m := range metrics {
+		if err := validate(m); err != nil {
+			return fmt.Errorf("metrics[%d]: %w", i, err)
+		}
+	}
+
+	return s.repo.InsertBatch(ctx, metrics)
 }
 
 func validate(m models.Metric) error {

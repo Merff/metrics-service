@@ -40,3 +40,24 @@ func TestInsertMetric(t *testing.T) {
 
 	require.NoError(t, err)
 }
+
+func TestInsertMetricsBatch(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := storage.NewPool(ctx, config.Load().DatabaseURL)
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := repository.NewMetricRepository(db)
+
+	now := time.Now()
+	metrics := []models.Metric{
+		{ClientID: 1, AppID: 1, Requests: 10, Landings: 5, ApiRegisterTotal: 3, ApiRegisterScam: 1, Timestamp: now},
+		{ClientID: 1, AppID: 2, Requests: 20, Landings: 6, ApiRegisterTotal: 4, ApiRegisterScam: 0, Timestamp: now},
+	}
+
+	require.NoError(t, repo.InsertBatch(ctx, metrics))
+
+	err = repo.InsertBatch(ctx, metrics)
+	require.ErrorIs(t, err, repository.ErrDuplicate)
+}
