@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,10 +15,7 @@ import (
 	"metrics-service/internal/service"
 )
 
-const (
-	maxBodyBytes = 1 << 20
-	dateLayout   = "2006-01-02"
-)
+const dateLayout = "2006-01-02"
 
 type MetricService interface {
 	Save(ctx context.Context, metric models.Metric) error
@@ -176,13 +174,16 @@ func (req createMetricRequest) toModel() models.Metric {
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 
 	if err := dec.Decode(dst); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return false
+	}
+
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid json: unexpected data after top-level value")
 		return false
 	}
 

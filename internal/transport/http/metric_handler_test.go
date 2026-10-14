@@ -68,6 +68,9 @@ func TestCreateMetric(t *testing.T) {
 		wantStatus int
 	}{
 		{name: "ok", body: validBody, wantStatus: http.StatusCreated},
+		{name: "trailing whitespace", body: validBody + "\n\t ", wantStatus: http.StatusCreated},
+		{name: "trailing object", body: validBody + validBody, wantStatus: http.StatusBadRequest},
+		{name: "trailing garbage", body: validBody + "x", wantStatus: http.StatusBadRequest},
 		{name: "invalid json", body: `{`, wantStatus: http.StatusBadRequest},
 		{name: "unknown field", body: `{"foo": 1}`, wantStatus: http.StatusBadRequest},
 		{name: "validation error", body: validBody, saveErr: fmt.Errorf("%w: bad", service.ErrValidation), wantStatus: http.StatusBadRequest},
@@ -104,6 +107,7 @@ func TestCreateMetricsBatch(t *testing.T) {
 	}{
 		{name: "all inserted", body: twoItems, inserted: 2, wantStatus: http.StatusOK, wantBody: `{"inserted":2,"skipped":0}`, wantSaved: 2},
 		{name: "duplicates skipped", body: twoItems, inserted: 1, wantStatus: http.StatusOK, wantBody: `{"inserted":1,"skipped":1}`, wantSaved: 2},
+		{name: "trailing array", body: twoItems + twoItems, wantStatus: http.StatusBadRequest},
 		{name: "not an array", body: validBody, wantStatus: http.StatusBadRequest},
 		{name: "unknown field", body: `[{"foo": 1}]`, wantStatus: http.StatusBadRequest},
 		{name: "validation error", body: "[" + validBody + "]", saveErr: fmt.Errorf("%w: bad", service.ErrValidation), wantStatus: http.StatusBadRequest, wantSaved: 1},

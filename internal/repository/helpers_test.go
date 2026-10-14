@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"metrics-service/internal/config"
 	"metrics-service/internal/repository"
 	"metrics-service/internal/storage"
 
@@ -15,27 +16,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const defaultTestDatabaseURL = "postgres://postgres:postgres@localhost:5433/metrics_test?sslmode=disable"
-
-var testDatabaseURL string
+var testDB *pgxpool.Pool
 
 func TestMain(m *testing.M) {
-	testDatabaseURL = os.Getenv("TEST_DATABASE_URL")
-	if testDatabaseURL == "" {
-		testDatabaseURL = defaultTestDatabaseURL
-	}
-
-	if err := prepareTestDatabase(testDatabaseURL); err != nil {
-		fmt.Fprintf(os.Stderr, "prepare test database: %v\n", err)
-		os.Exit(1)
-	}
-
-	os.Exit(m.Run())
+	os.Exit(run(m))
 }
 
-func prepareTestDatabase(dsn string) error {
+func run(m *testing.M) int {
 	ctx := context.Background()
+	dsn := config.Load().TestDatabaseURL
 
+	if err := prepareTestDatabase(ctx, dsn); err != nil {
+		fmt.Fprintf(os.Stderr, "prepare test database: %v\n", err)
+		return 1
+	}
+
+	db, err := storage.NewPool(ctx, dsn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "connect to test database: %v\n", err)
+		return 1
+	}
+	defer db.Close()
+
+	testDB = db
+	return m.Run()
+}
+
+func prepareTestDatabase(ctx context.Context, dsn string) error {
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		return err
@@ -71,30 +78,15 @@ func prepareTestDatabase(dsn string) error {
 func newTestRepo(t *testing.T) *repository.MetricRepository {
 	t.Helper()
 
-	ctx := context.Background()
+	truncate(t)
+	t.Cleanup(func() { truncate(t) })
 
-	db, err := storage.NewPool(ctx, testDatabaseURL)
-	require.NoError(t, err)
-
-	var name string
-	require.NoError(t, db.QueryRow(ctx, "SELECT current_database()").Scan(&name))
-	if !strings.HasSuffix(name, "_test") {
-		db.Close()
-		t.Fatalf("refusing to truncate database %q: name must end with _test", name)
-	}
-
-	truncate(t, db)
-	t.Cleanup(func() {
-		truncate(t, db)
-		db.Close()
-	})
-
-	return repository.NewMetricRepository(db)
+	return repository.NewMetricRepository(testDB)
 }
 
-func truncate(t *testing.T, db *pgxpool.Pool) {
+func truncate(t *testing.T) {
 	t.Helper()
 
-	_, err := db.Exec(context.Background(), "TRUNCATE metrics RESTART IDENTITY")
+	_, err := testDB.Exec(context.Background(), "TRUNCATE metrics RESTART IDENTITY")
 	require.NoError(t, err)
 }

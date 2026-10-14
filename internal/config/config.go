@@ -3,19 +3,22 @@ package config
 import "os"
 
 const (
-	defaultDatabaseURL = "postgres://postgres:postgres@localhost:5433/metrics?sslmode=disable"
-	defaultHTTPAddr    = ":8080"
+	defaultDatabaseURL     = "postgres://postgres:postgres@localhost:5433/metrics?sslmode=disable"
+	defaultTestDatabaseURL = "postgres://postgres:postgres@localhost:5433/metrics_test?sslmode=disable"
+	defaultHTTPAddr        = ":8080"
 )
 
 type Config struct {
-	DatabaseURL string
-	HTTPAddr    string
+	DatabaseURL     string
+	TestDatabaseURL string
+	HTTPAddr        string
 }
 
 func Load() Config {
 	return Config{
-		DatabaseURL: getEnv("DATABASE_URL", defaultDatabaseURL),
-		HTTPAddr:    getEnv("HTTP_ADDR", defaultHTTPAddr),
+		DatabaseURL:     getEnv("DATABASE_URL", defaultDatabaseURL),
+		TestDatabaseURL: getEnv("TEST_DATABASE_URL", defaultTestDatabaseURL),
+		HTTPAddr:        getEnv("HTTP_ADDR", defaultHTTPAddr),
 	}
 }
 
