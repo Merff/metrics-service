@@ -45,7 +45,7 @@ make migrate-up        # применить миграции (сервер и т
 make migrate-down      # откатить одну миграцию
 make run               # запустить сервер
 make test              # тесты (нужен запущенный docker compose)
-make lint              # golangci-lint
+make lint              # golangci-lint v2.12.2 через go run
 ```
 Адреса БД переопределяются переменными окружения (`DATABASE_URL`, `TEST_DATABASE_URL`); дефолты живут только
 в `internal/config` (Makefile держит `DATABASE_URL` лишь для `migrate-*`). Сервер по умолчанию слушает `:8080`.
